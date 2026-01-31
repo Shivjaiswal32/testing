@@ -27,22 +27,22 @@ def load_data():
 df = load_data()
 
 # =====================================================
-# DATA CLEANING (100% SAFE)
+# DATA CLEANING (BULLETPROOF)
 # =====================================================
 
-# 1. Clean column names
+# Clean column names
 df.columns = df.columns.str.strip()
 
-# 2. Ensure Year column exists
+# Ensure Year column exists
 if "Year" not in df.columns:
     for col in df.columns:
         if col.lower() == "year":
             df.rename(columns={col: "Year"}, inplace=True)
 
-# 3. Convert Year to numeric
+# Convert Year to numeric
 df["Year"] = pd.to_numeric(df["Year"], errors="coerce")
 
-# 4. Convert numeric columns safely
+# Numeric columns
 numeric_cols = [
     "Number of Registered Vehicles",
     "Number of Road Accidents",
@@ -53,13 +53,13 @@ numeric_cols = [
 for col in numeric_cols:
     df[col] = pd.to_numeric(df[col], errors="coerce")
 
-# 5. Drop rows where Year is missing
+# Drop rows without Year
 df = df.dropna(subset=["Year"])
 
-# 6. Convert Year to int
+# Convert Year to int
 df["Year"] = df["Year"].astype(int)
 
-# 7. Stop app if dataset becomes empty
+# Stop if dataset becomes empty
 if df.empty:
     st.error("Dataset is empty after cleaning. Please check the CSV file.")
     st.stop()
@@ -80,7 +80,7 @@ df["YoY Accident Change (%)"] = (
     .pct_change() * 100
 )
 
-# Risk category
+# Risk Category
 def risk_category(rate):
     if rate > 5:
         return "High Risk"
@@ -91,7 +91,7 @@ def risk_category(rate):
 
 df["Risk Category"] = df["Accident per 1,000 vehicles"].apply(risk_category)
 
-# COVID flag
+# COVID Flag
 df["COVID Period"] = df["Year"].apply(
     lambda x: "COVID" if x in [2020, 2021] else "Non-COVID"
 )
@@ -101,8 +101,8 @@ df["COVID Period"] = df["Year"].apply(
 # =====================================================
 st.sidebar.header("🔎 Filters")
 
-year_min = int(df["Year"].min(skipna=True))
-year_max = int(df["Year"].max(skipna=True))
+year_min = int(df["Year"].min())
+year_max = int(df["Year"].max())
 
 year_range = st.sidebar.slider(
     "Select Year Range",
@@ -132,6 +132,16 @@ filtered_df = df[
 if filtered_df.empty:
     st.warning("⚠️ No data available for selected filters.")
     st.stop()
+
+# =====================================================
+# CLEAN DATA FOR PLOTLY (CRITICAL FIX)
+# =====================================================
+filtered_df = filtered_df.copy()
+filtered_df["Fatality"] = (
+    filtered_df["Fatality"]
+    .fillna(0)
+    .clip(lower=0)
+)
 
 # =====================================================
 # KPI METRICS
@@ -199,7 +209,7 @@ fig_bar = px.bar(
 st.plotly_chart(fig_bar, use_container_width=True)
 
 # =====================================================
-# SCATTER PLOT
+# SCATTER PLOT (FIXED)
 # =====================================================
 st.subheader("🔬 Vehicles vs Accidents")
 
@@ -209,6 +219,7 @@ fig_scatter = px.scatter(
     y="Number of Road Accidents",
     color="Risk Category",
     size="Fatality",
+    size_max=40,   # IMPORTANT FIX
     hover_name="State/UT",
     title="Vehicles vs Road Accidents"
 )
