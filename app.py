@@ -12,7 +12,10 @@ st.set_page_config(
 )
 
 st.title("🚦 Indian Road Accident Analysis (2011–2022)")
-st.markdown("Interactive dashboard for analyzing road accidents, vehicles, and fatalities across Indian States/UTs.")
+st.markdown(
+    "Interactive dashboard for analyzing road accidents, vehicles, and fatalities "
+    "across Indian States and Union Territories."
+)
 
 # -----------------------------
 # LOAD DATA
@@ -25,8 +28,12 @@ def load_data():
 df = load_data()
 
 # -----------------------------
-# DATA CLEANING
+# DATA CLEANING (FIXED)
 # -----------------------------
+
+# Convert Year to numeric (IMPORTANT FIX)
+df["Year"] = pd.to_numeric(df["Year"], errors="coerce")
+
 numeric_cols = [
     "Number of Registered Vehicles",
     "Number of Road Accidents",
@@ -37,17 +44,23 @@ numeric_cols = [
 for col in numeric_cols:
     df[col] = pd.to_numeric(df[col], errors="coerce")
 
+# Drop invalid rows
 df = df.dropna()
+
+# Convert Year to int AFTER cleaning
+df["Year"] = df["Year"].astype(int)
 
 # -----------------------------
 # FEATURE ENGINEERING
 # -----------------------------
 df["Fatalities per Accident"] = df["Fatality"] / df["Number of Road Accidents"]
+
 df["Accidents per Million Vehicles"] = (
     df["Number of Road Accidents"] / df["Number of Registered Vehicles"]
 ) * 1_000_000
 
 df = df.sort_values(["State/UT", "Year"])
+
 df["YoY Accident Change (%)"] = (
     df.groupby("State/UT")["Number of Road Accidents"]
     .pct_change() * 100
@@ -64,31 +77,36 @@ def risk_category(rate):
 
 df["Risk Category"] = df["Accident per 1,000 vehicles"].apply(risk_category)
 
-# COVID Flag
-df["COVID Period"] = df["Year"].apply(lambda x: "COVID" if x in [2020, 2021] else "Non-COVID")
+# COVID Period Flag
+df["COVID Period"] = df["Year"].apply(
+    lambda x: "COVID" if x in [2020, 2021] else "Non-COVID"
+)
 
 # -----------------------------
 # SIDEBAR FILTERS
 # -----------------------------
 st.sidebar.header("🔎 Filters")
 
+year_min = int(df["Year"].min())
+year_max = int(df["Year"].max())
+
 year_range = st.sidebar.slider(
     "Select Year Range",
-    int(df["Year"].min()),
-    int(df["Year"].max()),
-    (2011, 2022)
+    min_value=year_min,
+    max_value=year_max,
+    value=(year_min, year_max)
 )
 
 states = st.sidebar.multiselect(
     "Select State/UT",
     options=sorted(df["State/UT"].unique()),
-    default=df["State/UT"].unique()
+    default=sorted(df["State/UT"].unique())
 )
 
 risk_filter = st.sidebar.multiselect(
     "Select Risk Category",
-    options=df["Risk Category"].unique(),
-    default=df["Risk Category"].unique()
+    options=sorted(df["Risk Category"].unique()),
+    default=sorted(df["Risk Category"].unique())
 )
 
 filtered_df = df[
@@ -96,6 +114,13 @@ filtered_df = df[
     (df["State/UT"].isin(states)) &
     (df["Risk Category"].isin(risk_filter))
 ]
+
+# -----------------------------
+# EMPTY DATA HANDLING (IMPORTANT)
+# -----------------------------
+if filtered_df.empty:
+    st.warning("⚠️ No data available for the selected filters.")
+    st.stop()
 
 # -----------------------------
 # KPI METRICS
@@ -129,28 +154,33 @@ col4.metric(
 # -----------------------------
 st.subheader("📈 Year-wise Trends")
 
-trend_df = filtered_df.groupby("Year", as_index=False).agg({
-    "Number of Road Accidents": "sum",
-    "Fatality": "sum"
-})
+trend_df = (
+    filtered_df
+    .groupby("Year", as_index=False)
+    .agg({
+        "Number of Road Accidents": "sum",
+        "Fatality": "sum"
+    })
+)
 
 fig_line = px.line(
     trend_df,
     x="Year",
     y=["Number of Road Accidents", "Fatality"],
     markers=True,
-    title="Road Accidents & Fatalities Over Time"
+    title="Road Accidents and Fatalities Over Time"
 )
 
 st.plotly_chart(fig_line, use_container_width=True)
 
 # -----------------------------
-# BAR CHARTS
+# BAR CHART
 # -----------------------------
-st.subheader("🏙️ State-wise Comparison")
+st.subheader("🏙️ Top States by Road Accidents")
 
 state_acc = (
-    filtered_df.groupby("State/UT", as_index=False)["Number of Road Accidents"]
+    filtered_df
+    .groupby("State/UT", as_index=False)["Number of Road Accidents"]
     .sum()
     .sort_values(by="Number of Road Accidents", ascending=False)
     .head(10)
@@ -168,7 +198,7 @@ st.plotly_chart(fig_bar, use_container_width=True)
 # -----------------------------
 # SCATTER PLOT
 # -----------------------------
-st.subheader("🔬 Vehicles vs Accidents Relationship")
+st.subheader("🔬 Vehicles vs Accidents")
 
 fig_scatter = px.scatter(
     filtered_df,
@@ -177,7 +207,7 @@ fig_scatter = px.scatter(
     color="Risk Category",
     size="Fatality",
     hover_name="State/UT",
-    title="Registered Vehicles vs Road Accidents"
+    title="Relationship Between Vehicles and Accidents"
 )
 
 st.plotly_chart(fig_scatter, use_container_width=True)
@@ -185,7 +215,7 @@ st.plotly_chart(fig_scatter, use_container_width=True)
 # -----------------------------
 # HEATMAP (TABLE STYLE)
 # -----------------------------
-st.subheader("🔥 Accident Rate Heatmap (Table View)")
+st.subheader("🔥 Accident Rate Heatmap")
 
 heatmap_df = filtered_df.pivot_table(
     index="State/UT",
@@ -193,7 +223,10 @@ heatmap_df = filtered_df.pivot_table(
     values="Accident per 1,000 vehicles"
 )
 
-st.dataframe(heatmap_df.style.background_gradient(cmap="Reds"))
+st.dataframe(
+    heatmap_df.style.background_gradient(cmap="Reds"),
+    use_container_width=True
+)
 
 # -----------------------------
 # INSIGHTS SECTION
@@ -207,10 +240,10 @@ peak_year = trend_df.loc[
 top_state = state_acc.iloc[0]["State/UT"]
 
 st.markdown(f"""
-- 🚨 Road accidents **peaked in {peak_year}** during the selected period.
-- 🏆 **{top_state}** recorded the highest number of road accidents.
-- 📉 A noticeable decline in accidents is observed during **COVID years (2020–2021)**.
-- ⚠️ High-risk states show higher accident rates despite lower vehicle counts.
+- 🚨 Road accidents peaked in **{peak_year}**.
+- 🏆 **{top_state}** recorded the highest number of accidents.
+- 📉 Accidents declined noticeably during **COVID years (2020–2021)**.
+- ⚠️ High-risk states show higher accident rates even with fewer vehicles.
 """)
 
 # -----------------------------
@@ -219,7 +252,7 @@ st.markdown(f"""
 st.subheader("✅ Conclusion")
 
 st.markdown("""
-This dashboard highlights that road accident trends are not solely dependent on vehicle count.
-Normalized metrics such as accident rate and fatalities per accident provide deeper safety insights.
-The analysis supports targeted policy-making and improved road safety interventions.
+This dashboard shows that accident counts alone do not represent road safety.
+Normalized indicators such as accident rate and fatalities per accident provide
+better insights for policy-making and road safety planning.
 """)
